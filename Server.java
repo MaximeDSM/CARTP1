@@ -11,6 +11,10 @@ public class Server {
     private ServerSocket server;
     private Socket serverAccept;
 
+    private boolean connected = false;
+    private String username;
+    private String password;
+
     public Server () {
         try {
             this.server = new ServerSocket(this.port);
@@ -44,7 +48,8 @@ public class Server {
         try {
             while (keepInteract) {
                 String scan = scanner.nextLine();
-                if (scan.length() > 4) {
+                if (scan.length() >= 4) {
+                    System.out.println(scan);
                     if (scan.substring(0, 4).equals("USER")) {
                         if (scan.substring(5).equals("test")) {
                             output.write("331 username ok\r\n".getBytes());
@@ -59,13 +64,18 @@ public class Server {
                             // refuser connection car password invalide
                         }
                     }
+                    if (scan.substring(0, 4).equals("QUIT")) {
+                        output.write("221 Service closing control connection\r\n".getBytes());
+                        keepInteract = false;
+                    }
                 }
-                
             }
+            scanner.close();
+            input.close();
+            output.close();
         } catch (IOException exc) {
             System.out.println(exc.toString());
         }
-        scanner.close();
     }
 
     public static void main (String [] args) {
