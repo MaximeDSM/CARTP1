@@ -64,6 +64,12 @@ public class Server {
                             // refuser connection car password invalide
                         }
                     }
+                    if (scan.substring(0, 4).equals("SYST")) {
+                        output.write("\r\n".getBytes());
+                    }
+                    if (scan.substring(0, 4).equals("FEAT")) {
+                        output.write("\r\n".getBytes());
+                    }
                     if (scan.substring(0, 4).equals("QUIT")) {
                         output.write("221 Service closing control connection\r\n".getBytes());
                         keepInteract = false;
@@ -71,8 +77,6 @@ public class Server {
                 }
             }
             scanner.close();
-            input.close();
-            output.close();
         } catch (IOException exc) {
             System.out.println(exc.toString());
         }
