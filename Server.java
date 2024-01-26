@@ -14,9 +14,7 @@ public class Server {
     private ServerSocket dataServerSocket;
     private Socket serverAccept;
     private Socket dataServer;
-    // mode 0 = ascii
-    // mode 1 = binaire
-    private int writingMode = 0;
+    private String path = "./files";
 
     public Server () {
         try {
@@ -58,14 +56,21 @@ public class Server {
                 String scan = scanner.nextLine();
                 System.out.println(scan);
 
-                if (scan.substring(0, 4).equals("USER")) {
+                if (scan.substring(0, 3).equals("CWD")) {
+                    if (this.changeDir(scan.substring(4))) {
+                        output.write("250 Requested file action okay, completed\r\n".getBytes());
+                    } else {
+                        output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
+                    }
+                }
+                else if (scan.substring(0, 4).equals("USER")) {
                     if (scan.substring(5).equals("test")) {
                         output.write("331 username ok\r\n".getBytes());
                     } else {
                         // refuser connection car username invalide
                     }
                 }
-                if (scan.substring(0, 4).equals("PASS")) {
+                else if (scan.substring(0, 4).equals("PASS")) {
                     if (scan.substring(5).equals("test")) {
                         output.write("230 user logged in\r\n".getBytes());
                     } else {
@@ -74,55 +79,88 @@ public class Server {
                         keepInteract = false;
                     }
                 }
-                if (scan.substring(0, 4).equals("SYST")) {
+                else if (scan.substring(0, 4).equals("SYST")) {
                     output.write("215 NAME system type\r\n".getBytes());
                 }
-                if (scan.substring(0, 4).equals("FEAT")) {
+                else if (scan.substring(0, 4).equals("FEAT")) {
                     output.write("\r\n".getBytes());
                 }
-                if (scan.substring(0, 4).equals("TYPE")) {
-                    if (scan.charAt(5) == 'I') {
-                        this.writingMode = 1;
-                    } else if (scan.charAt(5) == 'A') {
-                        this.writingMode = 0;
-                    }
+                else if (scan.substring(0, 4).equals("TYPE")) {
                     output.write("200 Command okay\r\n".getBytes());
                 }
-                if (scan.substring(0, 4).equals("SIZE")) {
+                else if (scan.substring(0, 4).equals("SIZE")) {
                     File file = this.getFile(scan.substring(5));
                     String resp;
                     if (file != null) {
                         resp  = "213 " + file.length() + "\r\n";
                         output.write(resp.getBytes());
+                    } else {
+                        output.write("213 File status\r\n".getBytes());
                     }
                 }
-                if (scan.substring(0, 4).equals("EPSV")) {
+                else if (scan.substring(0, 4).equals("EPSV")) {
                     String resp = "229 Entering Extended Passive Mode (|||" + this.dataServerSocket.getLocalPort() + "|)\r\n";
                     output.write(resp.getBytes());
                 }
-                if (scan.substring(0, 4).equals("RETR")) {
-                    this.dataServer = this.dataServerSocket.accept();
-                    File file = this.getFile(scan.substring(5));
-                    FileInputStream fileInput = new FileInputStream(file);
+                else if (scan.substring(0, 4).equals("LIST")) {
                     String resp = "";
-                    output.write("150 Accepted data connection\r\n".getBytes());
-                    int b = fileInput.read();
-                    while (b != -1) {
-                        resp = b + "\r\n";
-                        this.dataServer.getOutputStream().write(resp.getBytes());
-                        b = fileInput.read();
+                    String currentPath = this.path;
+                    File file;
+                    // When we want to display another directory
+                    if (scan.length() > 5) {
+                        // If the directory doesn't exist
+                        if (!this.changeDir(scan.substring(5))) {
+                            output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
+                        } else {
+                            this.dataServer = this.dataServerSocket.accept();
+                            output.write("150 Accepted data connection\r\n".getBytes());
+                            file = new File (this.path);
+                            for (int i = 0; i < file.listFiles().length; i++) {
+                                resp = file.listFiles()[i].getName() + "\r\n";
+                                this.dataServer.getOutputStream().write(resp.getBytes());
+                            }
+                            this.dataServer.close();
+                            output.write("226 Closing data connection\r\n".getBytes());
+                            this.changeDir(currentPath);
+                        }
+                    } else {
+                        this.dataServer = this.dataServerSocket.accept();
+                        output.write("150 Accepted data connection\r\n".getBytes());
+                        file = new File (this.path);
+                        for (int i = 0; i < file.listFiles().length; i++) {
+                            resp = file.listFiles()[i].getName() + "\r\n";
+                            this.dataServer.getOutputStream().write(resp.getBytes());
+                        }
+                        this.dataServer.close();
+                        output.write("226 Closing data connection\r\n".getBytes());
                     }
-                    this.dataServer.close();
-                    fileInput.close();
-                    System.out.println("passe");
-                    output.write("226 File successfully transfered\r\n".getBytes());
                 }
-                if (scan.substring(0, 4).equals("MDTM")) {
-                    output.write("421 Service not available, closing control connection.\r\n".getBytes());
-                    scanner.close();
-                    keepInteract = false;
+                else if (scan.substring(0, 4).equals("RETR")) {
+                    File file = this.getFile(scan.substring(5));
+                    // If the file does exist
+                    if (file != null) {
+                        this.dataServer = this.dataServerSocket.accept();
+                        String resp = "";
+                        output.write("150 Accepted data connection\r\n".getBytes());
+                        FileInputStream fileInput = new FileInputStream(file);
+                        int b = fileInput.read();
+                        while (b != -1) {
+                            resp = b + "\r\n";
+                            this.dataServer.getOutputStream().write(resp.getBytes());
+                            b = fileInput.read();
+                        }
+                        fileInput.close();
+                        this.dataServer.close();
+                        output.write("226 File successfully transfered\r\n".getBytes());
+                    } else {
+                        output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
+                    }
                 }
-                if (scan.substring(0, 4).equals("QUIT")) {
+                else if (scan.substring(0, 4).equals("MDTM")) {
+                    // Change file date
+                    output.write("253 Date/time changed okay.\r\n".getBytes());
+                }
+                else if (scan.substring(0, 4).equals("QUIT")) {
                     output.write("221 Service closing control connection\r\n".getBytes());
                     scanner.close();
                     keepInteract = false;
@@ -135,11 +173,21 @@ public class Server {
 
     public File getFile (String name) {
         File file;
-        file = new File ("./files/" + name);
-        if (file.exists()) {
+        file = new File (this.path + "/" + name);
+        // Should also count .. and . to check that we're not in a directory above files
+        if (file.exists() && file.isFile()) {
             return file;
         }
         return null;
+    }
+
+    public boolean changeDir (String path) {
+        File file = new File (this.path + "/" + path);
+        if (file.isDirectory()) {
+            this.path = this.path + "/" + path;
+            return true;
+        }
+        return false;
     }
 
     public static void main (String [] args) {
