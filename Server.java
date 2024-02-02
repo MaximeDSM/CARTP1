@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.nio.file.*;
 
 public class Server {
 
@@ -15,6 +17,7 @@ public class Server {
     private Socket serverAccept;
     private Socket dataServer;
     private String path = "./files";
+    private String CDPATH = "./files";
 
     public Server () {
         try {
@@ -57,21 +60,26 @@ public class Server {
                 System.out.println(scan);
 
                 if (scan.substring(0, 3).equals("CWD")) {
-                    if (this.changeDir(scan.substring(4))) {
-                        output.write("250 Requested file action okay, completed\r\n".getBytes());
+                    if (scan.length() > 3) {
+                        if (this.changeDir(scan.substring(4))) {
+                            output.write("250 Requested file action okay, completed\r\n".getBytes());
+                        } else {
+                            output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
+                        }
                     } else {
-                        output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
+                        this.changeDir(this.CDPATH);
+                        output.write("250 Requested file action okay, completed\r\n".getBytes());
                     }
                 }
                 else if (scan.substring(0, 4).equals("USER")) {
-                    if (scan.substring(5).equals("test")) {
+                    if (scan.substring(5).equals("miage")) {
                         output.write("331 username ok\r\n".getBytes());
                     } else {
                         // refuser connection car username invalide
                     }
                 }
                 else if (scan.substring(0, 4).equals("PASS")) {
-                    if (scan.substring(5).equals("test")) {
+                    if (scan.substring(5).equals("car")) {
                         output.write("230 user logged in\r\n".getBytes());
                     } else {
                         output.write("530 not logged in\r\n".getBytes());
@@ -108,7 +116,7 @@ public class Server {
                     File file;
                     // When we want to display another directory
                     if (scan.length() > 5) {
-                        // If the directory doesn't exist
+                        // If the directory doesn't exist or isn't a directory
                         if (!this.changeDir(scan.substring(5))) {
                             output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
                         } else {
@@ -140,18 +148,15 @@ public class Server {
                     // If the file does exist
                     if (file != null) {
                         this.dataServer = this.dataServerSocket.accept();
-                        String resp = "";
                         output.write("150 Accepted data connection\r\n".getBytes());
                         FileInputStream fileInput = new FileInputStream(file);
-                        int b = fileInput.read();
-                        while (b != -1) {
-                            resp = b + "\r\n";
-                            this.dataServer.getOutputStream().write(resp.getBytes());
-                            b = fileInput.read();
+                        byte[] b = new byte[4096];
+                        while (fileInput.read(b) != -1) {
+                            this.dataServer.getOutputStream().write(b);
                         }
                         fileInput.close();
-                        this.dataServer.close();
                         output.write("226 File successfully transfered\r\n".getBytes());
+                        this.dataServer.close();
                     } else {
                         output.write("501 Syntax error in parameters or arguments\r\n".getBytes());
                     }
@@ -159,6 +164,26 @@ public class Server {
                 else if (scan.substring(0, 4).equals("MDTM")) {
                     // Change file date
                     output.write("253 Date/time changed okay.\r\n".getBytes());
+                }
+                else if (scan.substring(0, 4).equals("PING")) {
+                    output.write("200 PING command ok\r\n".getBytes());
+                    output.write("PONG\r\n".getBytes());
+                }
+                else if (scan.substring(0, 4).equals("LINE")) {
+                    String fileName = scan.substring(5, scan.indexOf(' ', 5));
+                    String lineNum = scan.substring(scan.indexOf(' ', 5) + 1);
+                    String line;
+                    File file;
+                    if ((file = this.getFile(fileName)) != null) {
+                        line = this.getFileLine(Integer.parseInt(lineNum) , file);
+                        this.dataServer = this.dataServerSocket.accept();
+                        output.write("150 Accepted data connection\r\n".getBytes());
+                        line = line + "\r\n";
+                        System.out.println(line);
+                        dataServer.getOutputStream().write(line.getBytes());
+                        this.dataServer.close();
+                        output.write("226 File successfully transfered\r\n".getBytes());
+                    }
                 }
                 else if (scan.substring(0, 4).equals("QUIT")) {
                     output.write("221 Service closing control connection\r\n".getBytes());
@@ -174,7 +199,6 @@ public class Server {
     public File getFile (String name) {
         File file;
         file = new File (this.path + "/" + name);
-        // Should also count .. and . to check that we're not in a directory above files
         if (file.exists() && file.isFile()) {
             return file;
         }
@@ -182,12 +206,42 @@ public class Server {
     }
 
     public boolean changeDir (String path) {
+        Path normPath;
+        String tmpPath = this.path;
         File file = new File (this.path + "/" + path);
         if (file.isDirectory()) {
             this.path = this.path + "/" + path;
+            normPath = Paths.get(this.path);
+            normPath = normPath.normalize();
+            if (!normPath.startsWith("files")) {
+                this.path = tmpPath;
+                return false;
+            }
             return true;
         }
         return false;
+    }
+
+    public String getFileLine (int lineNum, File file) {
+        String res = null;
+        Scanner scanner;
+        try {
+            int count = 1;
+            String line;
+            scanner = new Scanner(file);
+            while (scanner.hasNextLine()) {
+                line = scanner.nextLine();
+                if (count == lineNum) {
+                    res = line;
+                }
+                count ++;
+            }
+            scanner.close();
+        } catch (FileNotFoundException exc) {
+            System.out.println(exc);
+        }
+        System.out.println(res);
+        return res;
     }
 
     public static void main (String [] args) {
